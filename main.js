@@ -213,3 +213,142 @@ function renderResults(ticker, priceData, note) {
   render();
 })();
 
+// Annoying & Catchy Candy Chiptune Background Soundtrack
+(function initSoundtrack() {
+  const toggleBtn = document.getElementById('music-toggle');
+  if (!toggleBtn) return;
+
+  let audioCtx = null;
+  let isPlaying = false;
+  let timerId = null;
+  let step = 0;
+
+  // Frequencies in Hz
+  const NOTES = {
+    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00, B5: 987.77,
+    C6: 1046.50, D6: 1174.66, E6: 1318.51, Rest: 0
+  };
+
+  // Upbeat, bouncy, repetitive 32-step arcade candy tune
+  const melodyPattern = [
+    'E5', 'G5', 'C6', 'E5', 'G5', 'C6', 'B5', 'G5',
+    'A5', 'F5', 'A5', 'C6', 'G5', 'E5', 'G5', 'C6',
+    'F5', 'A5', 'D6', 'F5', 'E5', 'G5', 'C6', 'E5',
+    'D5', 'F5', 'B5', 'D5', 'C5', 'E5', 'G5', 'C6',
+
+    'E5', 'G5', 'C6', 'E5', 'G5', 'C6', 'D6', 'C6',
+    'B5', 'G5', 'B5', 'D6', 'C6', 'A5', 'F5', 'D5',
+    'C5', 'E5', 'G5', 'C6', 'D5', 'F5', 'A5', 'D6',
+    'E5', 'G5', 'C6', 'E6', 'D6', 'B5', 'C6', 'Rest'
+  ];
+
+  const bassPattern = [
+    'C4', 'C4', 'G4', 'G4', 'A4', 'A4', 'E4', 'E4',
+    'F4', 'F4', 'C4', 'C4', 'G4', 'G4', 'G4', 'B4',
+    'C4', 'C4', 'G4', 'G4', 'A4', 'A4', 'F4', 'F4',
+    'G4', 'G4', 'G4', 'G4', 'C4', 'E4', 'G4', 'C4'
+  ];
+
+  function playStep() {
+    if (!isPlaying || !audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const noteName = melodyPattern[step % melodyPattern.length];
+    const bassName = bassPattern[Math.floor(step / 2) % bassPattern.length];
+
+    // Lead Pulse Synth (Bright bouncy chiptune sound)
+    if (noteName && noteName !== 'Rest' && NOTES[noteName]) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(NOTES[noteName], now);
+
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    }
+
+    // Bass Synth (Warm bouncy backing)
+    if (step % 2 === 0 && bassName && NOTES[bassName]) {
+      const bassOsc = audioCtx.createOscillator();
+      const bassGain = audioCtx.createGain();
+
+      bassOsc.type = 'triangle';
+      bassOsc.frequency.setValueAtTime(NOTES[bassName] / 2, now); // 1 octave lower
+
+      bassGain.gain.setValueAtTime(0.12, now);
+      bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+
+      bassOsc.connect(bassGain);
+      bassGain.connect(audioCtx.destination);
+
+      bassOsc.start(now);
+      bassOsc.stop(now + 0.23);
+    }
+
+    // Cheerful Percussion Pop on beats
+    if (step % 4 === 0) {
+      const popOsc = audioCtx.createOscillator();
+      const popGain = audioCtx.createGain();
+
+      popOsc.type = 'sine';
+      popOsc.frequency.setValueAtTime(800, now);
+      popOsc.frequency.exponentialRampToValueAtTime(150, now + 0.05);
+
+      popGain.gain.setValueAtTime(0.08, now);
+      popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+      popOsc.connect(popGain);
+      popGain.connect(audioCtx.destination);
+
+      popOsc.start(now);
+      popOsc.stop(now + 0.06);
+    }
+
+    step++;
+  }
+
+  function startMusic() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    isPlaying = true;
+    step = 0;
+    toggleBtn.classList.add('playing');
+    toggleBtn.innerHTML = '🎵 Background Music: ON 🎶';
+
+    // ~140 BPM (107ms per 16th note step)
+    timerId = setInterval(playStep, 107);
+  }
+
+  function stopMusic() {
+    isPlaying = false;
+    if (timerId) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    toggleBtn.classList.remove('playing');
+    toggleBtn.innerHTML = '🔇 Background Music: OFF';
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (isPlaying) {
+      stopMusic();
+    } else {
+      startMusic();
+    }
+  });
+})();
+
