@@ -15,7 +15,21 @@ form.addEventListener('submit', async (event) => {
   const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
   const openRouterKey = document.getElementById('openrouter-key').value.trim();
 
-  results.innerHTML = '<p>Loading...</p>';
+  const submitBtn = form.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '🦄 Analyzing...';
+  }
+
+  results.innerHTML = `
+    <div class="unicorn-loader-box">
+      <div class="unicorn-track">
+        <div class="rainbow-road"></div>
+        <div class="unicorn-runner">🦄</div>
+      </div>
+      <p class="unicorn-loading-text">Galloping through market data... 🌈✨</p>
+    </div>
+  `;
 
   try {
     const priceData = await fetchPriceData(ticker, twelveDataKey);
@@ -23,6 +37,11 @@ form.addEventListener('submit', async (event) => {
     renderResults(ticker, priceData, note);
   } catch (err) {
     results.innerHTML = `<p class="error">Something went wrong: ${err.message}</p>`;
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Analyze';
+    }
   }
 });
 

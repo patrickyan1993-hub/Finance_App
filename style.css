@@ -284,3 +284,83 @@ button:active {
   from { transform: scale(1); }
   to { transform: scale(1.05); }
 }
+
+/* Running Unicorn Loading Animation */
+.unicorn-loader-box {
+  padding: 2.25rem 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.unicorn-track {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 3px solid #ffffff;
+  box-shadow: inset 0 2px 8px rgba(107, 45, 134, 0.15), 0 4px 12px rgba(255, 42, 133, 0.2);
+}
+
+.rainbow-road {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #ff007f, #ffaa00, #00e5ff, #9d00ff, #ff007f);
+  background-size: 200% 100%;
+  animation: rainbowStream 1.2s linear infinite;
+}
+
+@keyframes rainbowStream {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+.unicorn-runner {
+  position: absolute;
+  font-size: 2.5rem;
+  line-height: 1;
+  bottom: 12px;
+  animation: unicornGallop 2.2s ease-in-out infinite, unicornBounce 0.3s ease-in-out infinite alternate;
+  filter: drop-shadow(0 4px 8px rgba(255, 0, 102, 0.4));
+  z-index: 2;
+}
+
+@keyframes unicornGallop {
+  0% { left: -10%; transform: scaleX(1); }
+  48% { left: 88%; transform: scaleX(1); }
+  50% { left: 88%; transform: scaleX(-1); }
+  98% { left: -10%; transform: scaleX(-1); }
+  100% { left: -10%; transform: scaleX(1); }
+}
+
+@keyframes unicornBounce {
+  0% { transform: translateY(0px) rotate(-3deg); }
+  100% { transform: translateY(-10px) rotate(6deg); }
+}
+
+.unicorn-loading-text {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  margin: 0;
+  animation: pulseText 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulseText {
+  from { opacity: 0.7; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1.02); }
+}
+
