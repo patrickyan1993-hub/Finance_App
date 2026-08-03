@@ -5,8 +5,13 @@
 // OpenRouter key are entered in the form fields at run time, so nothing secret
 // is ever committed to your public repo or shipped in the source.
 
+import Chart from 'chart.js/auto';
+
 const form = document.getElementById('ticker-form');
 const results = document.getElementById('results');
+
+let maChartInstance = null;
+let macdChartInstance = null;
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -46,19 +51,11 @@ form.addEventListener('submit', async (event) => {
 });
 
 // Twelve Data daily price history.
-// This endpoint sends CORS headers, so it works directly from the browser.
-// The free plan covers all US equities and ETFs (no ticker whitelist).
-// Returns an array of daily bars sorted oldest to newest, each shaped as
-// { date, open, high, low, close, volume } with numeric values.
-// Replace or extend with moving average, MACD, RSI calculations from Day 1.
 async function fetchPriceData(ticker, apiKey) {
-  // outputsize is the number of most-recent bars. ~63 trading days is about
-  // 3 months; 90 leaves a little headroom. Max allowed is 5000.
-  const url = `https://api.twelvedata.com/time_series?symbol=${ticker}&interval=1day&outputsize=90&apikey=${apiKey}`;
+  // outputsize=300 ensures enough historical daily bars for accurate 200-day MA & MACD calculation
+  const url = `https://api.twelvedata.com/time_series?symbol=${ticker}&interval=1day&outputsize=300&apikey=${apiKey}`;
   const response = await fetch(url);
 
-  // Read the body as text first, then parse it safely, so an unexpected
-  // non-JSON response gives a readable error instead of "Unexpected token".
   const body = await response.text();
   let raw;
   try {
@@ -67,13 +64,9 @@ async function fetchPriceData(ticker, apiKey) {
     throw new Error(body.trim() || 'Price fetch failed');
   }
 
-  // Twelve Data reports problems as { code, status: "error", message }.
   if (raw && raw.status === 'error') throw new Error(raw.message || 'Price fetch failed');
   if (!response.ok) throw new Error('Price fetch failed');
 
-  // Successful responses look like { meta, values: [ { datetime, open, ... } ] },
-  // newest first. Normalize to numbers and sort oldest to newest so indicator
-  // math (moving averages, RSI, ...) reads left to right.
   const values = raw.values ?? [];
   if (!values.length) throw new Error(`No price data returned for ${ticker}`);
 
@@ -89,10 +82,72 @@ async function fetchPriceData(ticker, apiKey) {
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-// OpenRouter call. The price data above is summarized and handed to the model
-// so the note reflects the actual numbers you fetched. Replace the model,
-// prompt, and system prompt with whatever you designed in the Prompt
-// Engineering session.
+// Indicator Calculation Functions
+function calculateSMA(data, period) {
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(null);
+    } else {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        sum += data[j].close;
+      }
+      result.push(sum / period);
+    }
+  }
+  return result;
+}
+
+function calculateEMA(values, period) {
+  const k = 2 / (period + 1);
+  const result = [];
+  let ema = null;
+
+  for (let i = 0; i < values.length; i++) {
+    const val = values[i];
+    if (val === null || val === undefined) {
+      result.push(null);
+      continue;
+    }
+    if (ema === null) {
+      ema = val;
+    } else {
+      ema = val * k + ema * (1 - k);
+    }
+    result.push(ema);
+  }
+  return result;
+}
+
+function calculateMACD(data) {
+  const closes = data.map((d) => d.close);
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+
+  const macdLine = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (ema12[i] !== null && ema26[i] !== null) {
+      macdLine.push(ema12[i] - ema26[i]);
+    } else {
+      macdLine.push(null);
+    }
+  }
+
+  const signalLine = calculateEMA(macdLine, 9);
+
+  const histogram = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (macdLine[i] !== null && signalLine[i] !== null) {
+      histogram.push(macdLine[i] - signalLine[i]);
+    } else {
+      histogram.push(null);
+    }
+  }
+
+  return { macdLine, signalLine, histogram };
+}
+
 async function getResearchNote(ticker, priceData, apiKey) {
   const first = priceData[0];
   const latest = priceData[priceData.length - 1];
@@ -111,10 +166,6 @@ async function getResearchNote(ticker, priceData, apiKey) {
     },
     body: JSON.stringify({
       model: 'anthropic/claude-sonnet-5',
-      // Sonnet 5 is a reasoning model. If max_tokens is too small to also cover
-      // its reasoning tokens, the request is rejected with a 400 "Provider
-      // returned error". This note is short, so turn reasoning off and leave
-      // comfortable headroom for the reply.
       max_tokens: 2000,
       reasoning: { enabled: false },
       messages: [
@@ -123,32 +174,22 @@ async function getResearchNote(ticker, priceData, apiKey) {
       ]
     })
   });
-  // Surface what OpenRouter actually said, so a failed call tells you the real
-  // reason (bad key, no credits, rate limit, provider error) instead of a
-  // generic message you cannot act on.
   if (!response.ok) throw new Error(`OpenRouter call failed. ${await readOpenRouterError(response)}`);
   const data = await response.json();
   return data.choices?.[0]?.message?.content ?? 'No response.';
 }
 
-// Pulls the useful part out of an OpenRouter error response: the HTTP status,
-// a plain-language hint for the common cases, and the message OpenRouter (or
-// the upstream provider) actually returned.
 async function readOpenRouterError(response) {
   let message = '';
   try {
     const body = await response.json();
     const err = body.error ?? body;
     message = err.message || '';
-    // On a "Provider returned error", the provider's own message is under
-    // metadata rather than the top-level message field.
     const provider = err.metadata?.provider_name;
     const raw = err.metadata?.raw;
     if (provider) message += ` [provider: ${provider}]`;
     if (raw) message += ` ${typeof raw === 'string' ? raw : JSON.stringify(raw)}`;
-  } catch {
-    // Response body was not JSON; the status code below still says something.
-  }
+  } catch {}
   const hint = {
     401: 'Your API key looks invalid or missing',
     402: 'This model is paid and your OpenRouter account is out of credits',
@@ -158,14 +199,206 @@ async function readOpenRouterError(response) {
 }
 
 function renderResults(ticker, priceData, note) {
-  // priceData is sorted oldest to newest, so the last bar is the most recent.
   const latest = priceData[priceData.length - 1];
 
+  // Calculate Moving Averages and MACD across all available historical bars
+  const sma50Full = calculateSMA(priceData, 50);
+  const sma200Full = calculateSMA(priceData, 200);
+  const macdFull = calculateMACD(priceData);
+
+  // Slice the last 120 trading days for clear, responsive plotting
+  const sliceCount = Math.min(120, priceData.length);
+  const plottedData = priceData.slice(-sliceCount);
+  const plottedSMA50 = sma50Full.slice(-sliceCount);
+  const plottedSMA200 = sma200Full.slice(-sliceCount);
+  const plottedMACD = macdFull.macdLine.slice(-sliceCount);
+  const plottedSignal = macdFull.signalLine.slice(-sliceCount);
+  const plottedHist = macdFull.histogram.slice(-sliceCount);
+
+  // Latest indicator values
+  const lastSMA50 = plottedSMA50[plottedSMA50.length - 1];
+  const lastSMA200 = plottedSMA200[plottedSMA200.length - 1];
+  const lastMACD = plottedMACD[plottedMACD.length - 1];
+  const lastSignal = plottedSignal[plottedSignal.length - 1];
+
+  const crossBadge =
+    lastSMA50 && lastSMA200
+      ? lastSMA50 >= lastSMA200
+        ? `<span class="badge badge-bullish">Golden Cross 🚀</span>`
+        : `<span class="badge badge-bearish">Death Cross 📉</span>`
+      : '';
+
+  const macdBadge =
+    lastMACD !== null && lastSignal !== null
+      ? lastMACD >= lastSignal
+        ? `<span class="badge badge-bullish">Bullish Momentum 📈</span>`
+        : `<span class="badge badge-bearish">Bearish Momentum 📉</span>`
+      : '';
+
   results.innerHTML = `
-    <h2>${ticker}</h2>
-    <p class="price">Latest close (${latest.date}): $${latest.close.toFixed(2)}</p>
+    <div class="result-header">
+      <h2>${ticker}</h2>
+      <p class="price">Latest close (${latest.date}): <strong>$${latest.close.toFixed(2)}</strong></p>
+    </div>
+
     <p class="note">${note}</p>
+
+    <!-- Price & Moving Averages Chart -->
+    <div class="chart-container">
+      <div class="chart-header">
+        <h3 class="chart-title">Price & Moving Averages (50D & 200D)</h3>
+        <div class="indicator-badges">
+          ${lastSMA50 ? `<span class="badge badge-ma50">50D MA: $${lastSMA50.toFixed(2)}</span>` : ''}
+          ${lastSMA200 ? `<span class="badge badge-ma200">200D MA: $${lastSMA200.toFixed(2)}</span>` : ''}
+          ${crossBadge}
+        </div>
+      </div>
+      <div class="canvas-wrapper">
+        <canvas id="ma-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- MACD Chart -->
+    <div class="chart-container">
+      <div class="chart-header">
+        <h3 class="chart-title">MACD (12, 26, 9)</h3>
+        <div class="indicator-badges">
+          ${lastMACD !== null ? `<span class="badge badge-macd">MACD: ${lastMACD.toFixed(2)}</span>` : ''}
+          ${macdBadge}
+        </div>
+      </div>
+      <div class="canvas-wrapper">
+        <canvas id="macd-chart"></canvas>
+      </div>
+    </div>
   `;
+
+  // Destroy previous chart instances if re-analyzing
+  if (maChartInstance) {
+    maChartInstance.destroy();
+    maChartInstance = null;
+  }
+  if (macdChartInstance) {
+    macdChartInstance.destroy();
+    macdChartInstance = null;
+  }
+
+  const labels = plottedData.map((d) => d.date);
+
+  // Render Moving Averages Chart
+  const maCtx = document.getElementById('ma-chart').getContext('2d');
+  maChartInstance = new Chart(maCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Close Price',
+          data: plottedData.map((d) => d.close),
+          borderColor: '#ff2a85',
+          backgroundColor: 'rgba(255, 42, 133, 0.08)',
+          fill: true,
+          tension: 0.15,
+          borderWidth: 2.5,
+          pointRadius: 0,
+          pointHoverRadius: 5
+        },
+        {
+          label: '50-Day SMA',
+          data: plottedSMA50,
+          borderColor: '#ffcf00',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.2
+        },
+        {
+          label: '200-Day SMA',
+          data: plottedSMA200,
+          borderColor: '#9b51e0',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { font: { family: 'Quicksand, sans-serif', weight: '700' }, color: '#331045' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#8e52a8', font: { size: 10 } },
+          grid: { color: 'rgba(255,255,255,0.4)' }
+        },
+        y: {
+          ticks: { color: '#8e52a8', font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      }
+    }
+  });
+
+  // Render MACD Chart
+  const macdCtx = document.getElementById('macd-chart').getContext('2d');
+  macdChartInstance = new Chart(macdCtx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'MACD Line',
+          data: plottedMACD,
+          borderColor: '#ff2a85',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.2
+        },
+        {
+          type: 'line',
+          label: 'Signal Line',
+          data: plottedSignal,
+          borderColor: '#00d2ff',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.2
+        },
+        {
+          type: 'bar',
+          label: 'Histogram',
+          data: plottedHist,
+          backgroundColor: plottedHist.map((val) => (val >= 0 ? '#00e676' : '#ff1744')),
+          borderRadius: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { font: { family: 'Quicksand, sans-serif', weight: '700' }, color: '#331045' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#8e52a8', font: { size: 10 } },
+          grid: { color: 'rgba(255,255,255,0.4)' }
+        },
+        y: {
+          ticks: { color: '#8e52a8', font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      }
+    }
+  });
 }
 
 // Background Candy Rain Effect
