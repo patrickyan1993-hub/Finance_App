@@ -1,5 +1,5 @@
 {
-  "name": "GenAI Finance App",
+  "name": "Unicorn Finance App",
   "description": "Financial research SPA analyzing stock price data with Twelve Data API and AI research notes.",
   "requestFramePermissions": [],
   "majorCapabilities": [
