@@ -21,6 +21,21 @@
   box-sizing: border-box;
 }
 
+#candy-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-header, .app-main, .app-footer {
+  position: relative;
+  z-index: 1;
+}
+
 body {
   margin: 0;
   background: linear-gradient(-45deg, #ff6b8b, #d465ef, #4da1ff, #38ef7d, #ffdd59, #ff758c);

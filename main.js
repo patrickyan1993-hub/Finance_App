@@ -148,3 +148,68 @@ function renderResults(ticker, priceData, note) {
     <p class="note">${note}</p>
   `;
 }
+
+// Background Candy Rain Effect
+(function initCandyRain() {
+  const canvas = document.getElementById('candy-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  let width = (canvas.width = window.innerWidth);
+  let height = (canvas.height = window.innerHeight);
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const candies = ['🍬', '🍭', '🍫', '🍩', '🧁', '🍪', '🍰', '🍡', '🍿', '🍨', '🍦', '🎂', '🍬', '🍭', '🍒', '🍓', '🍇'];
+  const particleCount = 50;
+  const particles = [];
+
+  for (let i = 0; i < particleCount; i++) {
+    particles.push({
+      x: Math.random() * width,
+      y: Math.random() * height - height,
+      size: 22 + Math.random() * 24,
+      speedY: 1.2 + Math.random() * 2.8,
+      speedX: (Math.random() - 0.5) * 1.2,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.04,
+      swayOffset: Math.random() * Math.PI * 2,
+      swaySpeed: 0.01 + Math.random() * 0.02,
+      emoji: candies[Math.floor(Math.random() * candies.length)]
+    });
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+
+    for (const p of particles) {
+      p.y += p.speedY;
+      p.swayOffset += p.swaySpeed;
+      p.x += Math.sin(p.swayOffset) * 0.8 + p.speedX;
+      p.rotation += p.rotationSpeed;
+
+      if (p.y > height + 60) {
+        p.y = -60;
+        p.x = Math.random() * width;
+        p.emoji = candies[Math.floor(Math.random() * candies.length)];
+      }
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.font = `${p.size}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.emoji, 0, 0);
+      ctx.restore();
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  render();
+})();
+
