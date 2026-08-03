@@ -215,6 +215,58 @@ function renderResults(ticker, priceData, note) {
   const plottedSignal = macdFull.signalLine.slice(-sliceCount);
   const plottedHist = macdFull.histogram.slice(-sliceCount);
 
+  // Calculate MACD Crossover Signals (BUY when MACD line crosses above Signal line, SELL when MACD crosses below)
+  const buySignalsMACD = [];
+  const sellSignalsMACD = [];
+  const buySignalsPrice = [];
+  const sellSignalsPrice = [];
+  const signalEvents = [];
+
+  let latestSignal = null;
+
+  for (let i = 0; i < plottedData.length; i++) {
+    if (i === 0 || plottedMACD[i] === null || plottedSignal[i] === null || plottedMACD[i - 1] === null || plottedSignal[i - 1] === null) {
+      buySignalsMACD.push(null);
+      sellSignalsMACD.push(null);
+      buySignalsPrice.push(null);
+      sellSignalsPrice.push(null);
+      continue;
+    }
+
+    const prevMacd = plottedMACD[i - 1];
+    const prevSig = plottedSignal[i - 1];
+    const currMacd = plottedMACD[i];
+    const currSig = plottedSignal[i];
+
+    // Bullish Crossover (BUY)
+    if (prevMacd < prevSig && currMacd >= currSig) {
+      buySignalsMACD.push(currMacd);
+      sellSignalsMACD.push(null);
+      buySignalsPrice.push(plottedData[i].close);
+      sellSignalsPrice.push(null);
+
+      const evt = { type: 'BUY', date: plottedData[i].date, price: plottedData[i].close, macd: currMacd };
+      signalEvents.push(evt);
+      latestSignal = evt;
+    }
+    // Bearish Crossover (SELL)
+    else if (prevMacd > prevSig && currMacd <= currSig) {
+      buySignalsMACD.push(null);
+      sellSignalsMACD.push(currMacd);
+      buySignalsPrice.push(null);
+      sellSignalsPrice.push(plottedData[i].close);
+
+      const evt = { type: 'SELL', date: plottedData[i].date, price: plottedData[i].close, macd: currMacd };
+      signalEvents.push(evt);
+      latestSignal = evt;
+    } else {
+      buySignalsMACD.push(null);
+      sellSignalsMACD.push(null);
+      buySignalsPrice.push(null);
+      sellSignalsPrice.push(null);
+    }
+  }
+
   // Latest indicator values
   const lastSMA50 = plottedSMA50[plottedSMA50.length - 1];
   const lastSMA200 = plottedSMA200[plottedSMA200.length - 1];
@@ -234,6 +286,27 @@ function renderResults(ticker, priceData, note) {
         ? `<span class="badge badge-bullish">Bullish Momentum 📈</span>`
         : `<span class="badge badge-bearish">Bearish Momentum 📉</span>`
       : '';
+
+  const latestSignalBadge = latestSignal
+    ? `<span class="badge ${latestSignal.type === 'BUY' ? 'badge-bullish' : 'badge-bearish'}">Latest Signal: ${latestSignal.type} (${latestSignal.date})</span>`
+    : '';
+
+  // Render Signal Log Table rows (most recent first)
+  const recentEvents = [...signalEvents].reverse().slice(0, 5);
+  const signalRows = recentEvents.length
+    ? recentEvents
+        .map(
+          (evt) => `
+      <tr class="signal-row ${evt.type === 'BUY' ? 'row-buy' : 'row-sell'}">
+        <td><strong>${evt.date}</strong></td>
+        <td><span class="badge ${evt.type === 'BUY' ? 'badge-bullish' : 'badge-bearish'}">${evt.type === 'BUY' ? '🟢 BUY' : '🔴 SELL'}</span></td>
+        <td>$${evt.price.toFixed(2)}</td>
+        <td>${evt.macd.toFixed(3)}</td>
+      </tr>
+    `
+        )
+        .join('')
+    : `<tr><td colspan="4" style="text-align:center; color:#8e52a8;">No crossovers detected in the plotted window</td></tr>`;
 
   results.innerHTML = `
     <div class="result-header">
@@ -261,14 +334,35 @@ function renderResults(ticker, priceData, note) {
     <!-- MACD Chart -->
     <div class="chart-container">
       <div class="chart-header">
-        <h3 class="chart-title">MACD (12, 26, 9)</h3>
+        <h3 class="chart-title">MACD (12, 26, 9) & Buy/Sell Signals</h3>
         <div class="indicator-badges">
           ${lastMACD !== null ? `<span class="badge badge-macd">MACD: ${lastMACD.toFixed(2)}</span>` : ''}
           ${macdBadge}
+          ${latestSignalBadge}
         </div>
       </div>
       <div class="canvas-wrapper">
         <canvas id="macd-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- MACD Signal History Table -->
+    <div class="signal-log-container">
+      <h3 class="signal-log-title">🎯 MACD Crossover Buy & Sell Signals History</h3>
+      <div class="signal-table-wrapper">
+        <table class="signal-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Signal</th>
+              <th>Stock Price</th>
+              <th>MACD Line</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${signalRows}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
@@ -285,7 +379,7 @@ function renderResults(ticker, priceData, note) {
 
   const labels = plottedData.map((d) => d.date);
 
-  // Render Moving Averages Chart
+  // Render Moving Averages Chart with Buy/Sell Signal Overlays
   const maCtx = document.getElementById('ma-chart').getContext('2d');
   maChartInstance = new Chart(maCtx, {
     type: 'line',
@@ -320,6 +414,33 @@ function renderResults(ticker, priceData, note) {
           pointRadius: 0,
           pointHoverRadius: 4,
           tension: 0.2
+        },
+        {
+          label: 'BUY Signal 🟢',
+          data: buySignalsPrice,
+          borderColor: 'transparent',
+          backgroundColor: '#00e676',
+          pointBackgroundColor: '#00e676',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointStyle: 'triangle',
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          showLine: false
+        },
+        {
+          label: 'SELL Signal 🔴',
+          data: sellSignalsPrice,
+          borderColor: 'transparent',
+          backgroundColor: '#ff1744',
+          pointBackgroundColor: '#ff1744',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointStyle: 'triangle',
+          rotation: 180,
+          pointRadius: 8,
+          pointHoverRadius: 12,
+          showLine: false
         }
       ]
     },
@@ -345,7 +466,7 @@ function renderResults(ticker, priceData, note) {
     }
   });
 
-  // Render MACD Chart
+  // Render MACD Chart with Highlighted Crossover Points
   const macdCtx = document.getElementById('macd-chart').getContext('2d');
   macdChartInstance = new Chart(macdCtx, {
     data: {
@@ -375,6 +496,35 @@ function renderResults(ticker, priceData, note) {
           data: plottedHist,
           backgroundColor: plottedHist.map((val) => (val >= 0 ? '#00e676' : '#ff1744')),
           borderRadius: 2
+        },
+        {
+          type: 'line',
+          label: 'BUY Point 🟢',
+          data: buySignalsMACD,
+          borderColor: 'transparent',
+          backgroundColor: '#00e676',
+          pointBackgroundColor: '#00e676',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2.5,
+          pointStyle: 'triangle',
+          pointRadius: 9,
+          pointHoverRadius: 13,
+          showLine: false
+        },
+        {
+          type: 'line',
+          label: 'SELL Point 🔴',
+          data: sellSignalsMACD,
+          borderColor: 'transparent',
+          backgroundColor: '#ff1744',
+          pointBackgroundColor: '#ff1744',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2.5,
+          pointStyle: 'triangle',
+          rotation: 180,
+          pointRadius: 9,
+          pointHoverRadius: 13,
+          showLine: false
         }
       ]
     },

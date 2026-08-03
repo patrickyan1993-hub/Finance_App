@@ -457,3 +457,63 @@ button:active {
   height: 280px;
 }
 
+/* MACD Signal History Log */
+.signal-log-container {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 18px;
+  border: 3px solid #ffffff;
+  box-shadow: 0 8px 24px rgba(107, 45, 134, 0.12);
+}
+
+.signal-log-title {
+  margin: 0 0 0.85rem 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.signal-table-wrapper {
+  overflow-x: auto;
+}
+
+.signal-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.signal-table th {
+  padding: 0.6rem 0.8rem;
+  background-color: #f8efff;
+  color: var(--text-muted);
+  font-weight: 800;
+  border-bottom: 2px solid #e0b0ff;
+}
+
+.signal-table th:first-child {
+  border-top-left-radius: 10px;
+}
+
+.signal-table th:last-child {
+  border-top-right-radius: 10px;
+}
+
+.signal-table td {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid #f0e0f8;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.signal-row.row-buy td {
+  background-color: rgba(220, 252, 231, 0.4);
+}
+
+.signal-row.row-sell td {
+  background-color: rgba(255, 228, 230, 0.4);
+}
+
